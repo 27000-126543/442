@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  Row, Col, Card, Button, Table, Modal, Form, Input, Select,
+  Row, Col, Card, Button, Table, Modal, Form, Input, Select, InputNumber,
   Tag, Space, message, Typography, Progress, Rate, Avatar
 } from 'antd';
 import { PlusOutlined, BulbOutlined, LikeOutlined, ShareAltOutlined, TrophyOutlined } from '@ant-design/icons';
@@ -39,7 +39,7 @@ export default function Culture() {
   const loadData = async () => {
     try {
       const [f, m, a] = await Promise.all([
-        cultureApi.getActiveFestivals(),
+        cultureApi.getFestivals(),
         cultureApi.getMyArtworks(),
         cultureApi.getAllArtworks(),
       ]);

@@ -1,5 +1,6 @@
 import { query, queryOne, run } from '../database';
 import { generateId, now, randomInt } from '../utils';
+import { approvalService } from './ApprovalService';
 import type { LeaderboardEntry, CommercialTower, TowerContribution, IncomeRecord, DepartmentType } from '../types';
 
 export class LeaderboardService {
@@ -85,7 +86,7 @@ export class TowerService {
     const newTotal = tower.total_contribution + amount;
     let newStatus = tower.upgrade_status;
     if (newTotal >= tower.required_contribution && tower.upgrade_status === 'idle') {
-      newStatus = 'awaiting_approval';
+      newStatus = 'ready';
     }
 
     run(`
@@ -106,10 +107,37 @@ export class TowerService {
     return query('SELECT * FROM tower_contributions WHERE tower_id = ? ORDER BY contributed_at DESC', [towerId]) as TowerContribution[];
   }
 
-  upgradeTower(towerId: string): CommercialTower | null {
+  requestUpgrade(towerId: string, companyId: string): any {
     const tower = this.getTowerById(towerId);
     if (!tower) return null;
-    if (tower.total_contribution < tower.required_contribution) return null;
+
+    const companyIds = JSON.parse(tower.company_ids) as string[];
+    if (!companyIds.includes(companyId)) return null;
+
+    if (tower.total_contribution < tower.required_contribution) {
+      return null;
+    }
+    if (tower.upgrade_status !== 'idle' && tower.upgrade_status !== 'ready') {
+      return null;
+    }
+
+    const approval = approvalService.createApproval(
+      companyIds[0],
+      `多维商业塔 Lv.${tower.level} 升级`,
+      `申请将多维商业塔从 Lv.${tower.level} 升级到 Lv.${tower.level + 1}，所有商会贡献已达标。`,
+      3,
+      { type: 'tower_upgrade', towerId: towerId, targetLevel: tower.level + 1 }
+    );
+
+    run("UPDATE commercial_towers SET upgrade_status = 'awaiting_approval' WHERE id = ?", [towerId]);
+
+    return { tower: this.getTowerById(towerId), approval };
+  }
+
+  executeUpgrade(towerId: string): CommercialTower | null {
+    const tower = this.getTowerById(towerId);
+    if (!tower) return null;
+    if (tower.upgrade_status !== 'awaiting_approval') return null;
 
     const newLevel = tower.level + 1;
     const companyIds = JSON.parse(tower.company_ids) as string[];
@@ -128,6 +156,10 @@ export class TowerService {
 
     return this.getTowerById(towerId) || null;
   }
+
+  upgradeTower(towerId: string): CommercialTower | null {
+    return this.executeUpgrade(towerId);
+  }
 }
 
 export class ReportService {
@@ -141,6 +173,45 @@ export class ReportService {
     `, [companyId, since]) as IncomeRecord[];
   }
 
+  getDailyIncome(companyId: string, days: number = 7): { date: string; department: DepartmentType; amount: number }[] {
+    const since = now() - days * 24 * 60 * 60 * 1000;
+    const records = query(`
+      SELECT timestamp, department, amount FROM income_records
+      WHERE company_id = ? AND timestamp >= ?
+      ORDER BY timestamp ASC
+    `, [companyId, since]) as IncomeRecord[];
+
+    const map = new Map<string, Map<DepartmentType, number>>();
+    for (let i = 0; i < days; i++) {
+      const d = new Date();
+      d.setDate(d.getDate() - (days - 1 - i));
+      d.setHours(0, 0, 0, 0);
+      const key = d.toISOString().split('T')[0];
+      map.set(key, new Map([
+        ['transport', 0],
+        ['finance', 0],
+        ['intelligence', 0],
+        ['culture', 0],
+      ]));
+    }
+
+    for (const r of records) {
+      const date = new Date(r.timestamp).toISOString().split('T')[0];
+      if (map.has(date)) {
+        const dayMap = map.get(date)!;
+        dayMap.set(r.department, (dayMap.get(r.department) || 0) + r.amount);
+      }
+    }
+
+    const result: { date: string; department: DepartmentType; amount: number }[] = [];
+    for (const [date, dayMap] of map) {
+      for (const [dept, amount] of dayMap) {
+        result.push({ date, department: dept as DepartmentType, amount });
+      }
+    }
+    return result;
+  }
+
   getDepartmentIncome(companyId: string): { department: DepartmentType; total: number }[] {
     return query(`
       SELECT department, SUM(amount) as total
@@ -152,6 +223,7 @@ export class ReportService {
 
   getWeeklySummary(companyId: string) {
     const incomeData = this.getIncomeData(companyId, 7);
+    const dailyIncome = this.getDailyIncome(companyId, 7);
     const deptIncome = this.getDepartmentIncome(companyId);
     const events = query(`
       SELECT type, COUNT(*) as count FROM game_events
@@ -170,6 +242,7 @@ export class ReportService {
         influence: company?.influence,
       },
       income_curve: incomeData,
+      daily_income: dailyIncome,
       asset_distribution: deptIncome,
       event_frequency: events,
       departments: departments.map((d: any) => ({

@@ -1,5 +1,10 @@
 import api from './client';
-import type { User, Company, Department, Portal, Caravan, BankAccount, Bond, Loan, Spy, Artwork, Festival, ApprovalFlow, GameEvent, CommercialTower, EconomicIndicator, LeaderboardEntry, IncomeRecord } from '../types';
+import type {
+  User, Company, Department, Portal, Caravan, BankAccount, Bond, Loan,
+  Spy, Artwork, Festival, ApprovalFlow, GameEvent, CommercialTower,
+  EconomicIndicator, LeaderboardEntry, IncomeRecord,
+  ExchangeOrder, ExchangeTrade, MarketData, OrderBook
+} from '../types';
 
 export const authApi = {
   register: (data: { username: string; email: string; password: string }) =>
@@ -51,6 +56,19 @@ export const financeApi = {
   getEconomy: () => api.get<EconomicIndicator>('/game/finance/economy').then(r => r.data),
 };
 
+export const exchangeApi = {
+  getMarkets: () => api.get<MarketData[]>('/game/exchange/markets').then(r => r.data),
+  getAssets: () => api.get<Record<string, number>>('/game/exchange/assets').then(r => r.data),
+  getOrderBook: (symbol: string) => api.get<OrderBook>('/game/exchange/orderbook', { params: { symbol } }).then(r => r.data),
+  getOrders: (symbol?: string) => api.get<ExchangeOrder[]>('/game/exchange/orders', { params: { symbol } }).then(r => r.data),
+  createBuyOrder: (data: { symbol: string; price: number; amount: number }) =>
+    api.post<ExchangeOrder>('/game/exchange/orders/buy', data).then(r => r.data),
+  createSellOrder: (data: { symbol: string; price: number; amount: number }) =>
+    api.post<ExchangeOrder>('/game/exchange/orders/sell', data).then(r => r.data),
+  cancelOrder: (id: string) => api.post(`/game/exchange/orders/${id}/cancel`).then(r => r.data),
+  getTrades: (symbol?: string) => api.get<ExchangeTrade[]>('/game/exchange/trades', { params: { symbol } }).then(r => r.data),
+};
+
 export const intelligenceApi = {
   getSpies: () => api.get<Spy[]>('/game/intelligence/spies').then(r => r.data),
   createSpy: (data: { name: string; skill?: number; stealth?: number }) =>
@@ -97,9 +115,9 @@ export const leaderboardApi = {
 export const towerApi = {
   getAll: () => api.get<CommercialTower[]>('/game/towers').then(r => r.data),
   create: (companyIds: string[]) => api.post<CommercialTower>('/game/towers', { companyIds }).then(r => r.data),
-  contribute: (id: string, amount: number) =>
-    api.post(`/game/towers/${id}/contribute`, { amount }).then(r => r.data),
+  contribute: (id: string, amount: number) => api.post(`/game/towers/${id}/contribute`, { amount }).then(r => r.data),
   getContributions: (id: string) => api.get(`/game/towers/${id}/contributions`).then(r => r.data),
+  requestUpgrade: (id: string) => api.post(`/game/towers/${id}/request-upgrade`).then(r => r.data),
   upgrade: (id: string) => api.post(`/game/towers/${id}/upgrade`).then(r => r.data),
 };
 

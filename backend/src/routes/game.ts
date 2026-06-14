@@ -6,6 +6,7 @@ import { intelligenceService } from '../services/IntelligenceService';
 import { cultureService } from '../services/CultureService';
 import { eventService } from '../services/EventService';
 import { approvalService } from '../services/ApprovalService';
+import { exchangeService } from '../services/ExchangeService';
 import { leaderboardService, towerService, reportService } from '../services/GameServices';
 
 const router = Router();
@@ -76,6 +77,52 @@ router.post('/finance/loans/:id/repay', (req: Request, res: Response) => {
 
 router.get('/finance/economy', (req: Request, res: Response) => {
   res.json(financeService.getCurrentEconomicIndicators());
+});
+
+// ===== 跨服交易所 =====
+router.get('/exchange/markets', (req: Request, res: Response) => {
+  res.json(exchangeService.getAllMarkets());
+});
+
+router.get('/exchange/assets', (req: Request, res: Response) => {
+  res.json(exchangeService.getCompanyAssets(req.user!.company_id!));
+});
+
+router.get('/exchange/orderbook', (req: Request, res: Response) => {
+  const symbol = req.query.symbol as string;
+  if (!symbol) return res.status(400).json({ error: '缺少交易品种' });
+  res.json(exchangeService.getOrderBook(symbol));
+});
+
+router.get('/exchange/orders', (req: Request, res: Response) => {
+  const symbol = req.query.symbol as string | undefined;
+  res.json(exchangeService.getCompanyOrders(req.user!.company_id!, symbol));
+});
+
+router.post('/exchange/orders/buy', (req: Request, res: Response) => {
+  const { symbol, price, amount } = req.body;
+  if (!symbol || !price || !amount) return res.status(400).json({ error: '参数缺失' });
+  const order = exchangeService.createBuyOrder(req.user!.company_id!, symbol, price, amount);
+  if (!order) return res.status(400).json({ error: '金币不足或创建失败' });
+  res.json(order);
+});
+
+router.post('/exchange/orders/sell', (req: Request, res: Response) => {
+  const { symbol, price, amount } = req.body;
+  if (!symbol || !price || !amount) return res.status(400).json({ error: '参数缺失' });
+  const order = exchangeService.createSellOrder(req.user!.company_id!, symbol, price, amount);
+  if (!order) return res.status(400).json({ error: '持仓不足或创建失败' });
+  res.json(order);
+});
+
+router.post('/exchange/orders/:id/cancel', (req: Request, res: Response) => {
+  const success = exchangeService.cancelOrder(req.params.id, req.user!.company_id!);
+  res.json({ success });
+});
+
+router.get('/exchange/trades', (req: Request, res: Response) => {
+  const symbol = req.query.symbol as string | undefined;
+  res.json(exchangeService.getCompanyTrades(req.user!.company_id!, symbol));
 });
 
 // ===== 情报部 =====
@@ -169,6 +216,18 @@ router.post('/approvals', (req: Request, res: Response) => {
 router.post('/approvals/:id/approve', (req: Request, res: Response) => {
   const result = approvalService.approve(req.params.id, req.user!.id, req.user!.role as any);
   if (!result) return res.status(400).json({ error: '审批失败' });
+  
+  if (result.status === 'approved') {
+    try {
+      const payload = JSON.parse(result.payload || '{}');
+      if (payload.type === 'tower_upgrade' && payload.towerId) {
+        towerService.executeUpgrade(payload.towerId);
+      }
+    } catch (e) {
+      console.error('审批后处理失败', e);
+    }
+  }
+  
   res.json(result);
 });
 
@@ -202,6 +261,12 @@ router.post('/towers', (req: Request, res: Response) => {
 router.post('/towers/:id/contribute', (req: Request, res: Response) => {
   const result = towerService.contribute(req.params.id, req.user!.company_id!, req.body.amount);
   if (!result) return res.status(400).json({ error: '贡献失败' });
+  res.json(result);
+});
+
+router.post('/towers/:id/request-upgrade', (req: Request, res: Response) => {
+  const result = towerService.requestUpgrade(req.params.id, req.user!.company_id!);
+  if (!result) return res.status(400).json({ error: '申请升级失败，可能贡献未达标或已在审批中' });
   res.json(result);
 });
 

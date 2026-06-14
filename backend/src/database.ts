@@ -238,6 +238,38 @@ function createTables() {
       amount REAL NOT NULL,
       timestamp INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS exchange_orders (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      symbol TEXT NOT NULL,
+      price REAL NOT NULL,
+      total_amount REAL NOT NULL,
+      filled_amount REAL NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS exchange_trades (
+      id TEXT PRIMARY KEY,
+      symbol TEXT NOT NULL,
+      price REAL NOT NULL,
+      amount REAL NOT NULL,
+      buy_order_id TEXT NOT NULL,
+      sell_order_id TEXT NOT NULL,
+      buyer_company_id TEXT NOT NULL,
+      seller_company_id TEXT NOT NULL,
+      timestamp INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS company_assets (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      symbol TEXT NOT NULL,
+      balance REAL NOT NULL DEFAULT 0,
+      UNIQUE(company_id, symbol)
+    );
   `;
 
   db.run(statements);

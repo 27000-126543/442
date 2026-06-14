@@ -162,7 +162,7 @@ export interface CommercialTower {
   level: number;
   total_contribution: number;
   required_contribution: number;
-  upgrade_status: 'idle' | 'awaiting_approval' | 'upgrading';
+  upgrade_status: 'idle' | 'ready' | 'awaiting_approval' | 'upgrading';
 }
 
 export interface EconomicIndicator {
@@ -192,4 +192,44 @@ export interface IncomeRecord {
   department: DepartmentType;
   amount: number;
   timestamp: number;
+}
+
+export interface ExchangeOrder {
+  id: string;
+  company_id: string;
+  type: 'buy' | 'sell';
+  symbol: string;
+  price: number;
+  total_amount: number;
+  filled_amount: number;
+  status: 'pending' | 'partial' | 'filled' | 'cancelled';
+  created_at: number;
+}
+
+export interface ExchangeTrade {
+  id: string;
+  symbol: string;
+  price: number;
+  amount: number;
+  buy_order_id: string;
+  sell_order_id: string;
+  buyer_company_id: string;
+  seller_company_id: string;
+  timestamp: number;
+}
+
+export interface MarketData {
+  symbol: string;
+  lastPrice: number;
+  bidPrice: number;
+  askPrice: number;
+  volume: number;
+  high24h: number;
+  low24h: number;
+  change24h: number;
+}
+
+export interface OrderBook {
+  buyOrders: ExchangeOrder[];
+  sellOrders: ExchangeOrder[];
 }

@@ -1,16 +1,28 @@
 import { useEffect, useState } from 'react';
 import {
   Row, Col, Card, Button, Table, Modal, Form, Input, InputNumber,
-  Statistic, Tag, Space, message, Typography, Tabs, Progress
+  Statistic, Tag, Space, message, Typography, Tabs, Progress, Select, List
 } from 'antd';
-import { PlusOutlined, DollarOutlined, BankOutlined, RiseOutlined, FallOutlined } from '@ant-design/icons';
-import ReactECharts from 'echarts-for-react';
-import { financeApi, authApi } from '../api';
-import type { BankAccount, Bond, Loan, EconomicIndicator, Department } from '../types';
+import { PlusOutlined, DollarOutlined, BankOutlined, RiseOutlined, FallOutlined, SwapOutlined, HistoryOutlined, ShoppingCartOutlined } from '@ant-design/icons';
+import { financeApi, exchangeApi, authApi } from '../api';
+import type {
+  BankAccount, Bond, Loan, EconomicIndicator, Department,
+  ExchangeOrder, ExchangeTrade, MarketData
+} from '../types';
 import { useAppStore } from '../store';
 import dayjs from 'dayjs';
 
 const { Title, Paragraph } = Typography;
+const { Option } = Select;
+
+const SYMBOLS = [
+  { symbol: 'mana_core', name: '魔力晶核', icon: '💎', basePrice: 100 },
+  { symbol: 'ship_parts', name: '星舰零件', icon: '🚀', basePrice: 250 },
+  { symbol: 'ancient_relic', name: '古代遗物', icon: '🏺', basePrice: 500 },
+  { symbol: 'intel_file', name: '情报密档', icon: '📜', basePrice: 1000 },
+];
+
+const getSymbolInfo = (symbol: string) => SYMBOLS.find(s => s.symbol === symbol) || { name: symbol, icon: '📦', basePrice: 100 };
 
 export default function Finance() {
   const departments = useAppStore(s => s.departments);
@@ -22,12 +34,24 @@ export default function Finance() {
   const [account, setAccount] = useState<BankAccount | null>(null);
   const [bonds, setBonds] = useState<Bond[]>([]);
   const [loans, setLoans] = useState<Loan[]>([]);
+
+  const [markets, setMarkets] = useState<MarketData[]>([]);
+  const [assets, setAssets] = useState<Record<string, number>>({});
+  const [orders, setOrders] = useState<ExchangeOrder[]>([]);
+  const [trades, setTrades] = useState<ExchangeTrade[]>([]);
+  const [activeSymbol, setActiveSymbol] = useState<string>('mana_core');
+  const [orderType, setOrderType] = useState<'buy' | 'sell'>('buy');
+
   const [depositModal, setDepositModal] = useState(false);
   const [withdrawModal, setWithdrawModal] = useState(false);
   const [bondModal, setBondModal] = useState(false);
   const [loanModal, setLoanModal] = useState(false);
+  const [orderModal, setOrderModal] = useState(false);
+
   const [loading, setLoading] = useState(false);
   const [upgradeLoading, setUpgradeLoading] = useState(false);
+  const [orderLoading, setOrderLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('exchange');
 
   useEffect(() => {
     loadData();
@@ -39,6 +63,12 @@ export default function Finance() {
     }
   }, [economy, setEconomy]);
 
+  useEffect(() => {
+    if (activeTab === 'exchange') {
+      loadExchangeData();
+    }
+  }, [activeTab, activeSymbol]);
+
   const loadData = async () => {
     try {
       const [acc, bnds, lns] = await Promise.all([
@@ -49,6 +79,23 @@ export default function Finance() {
       setAccount(acc);
       setBonds(bnds);
       setLoans(lns);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const loadExchangeData = async () => {
+    try {
+      const [m, a, o, t] = await Promise.all([
+        exchangeApi.getMarkets(),
+        exchangeApi.getAssets(),
+        exchangeApi.getOrders(activeSymbol),
+        exchangeApi.getTrades(activeSymbol),
+      ]);
+      setMarkets(m);
+      setAssets(a);
+      setOrders(o);
+      setTrades(t);
     } catch (e) {
       console.error(e);
     }
@@ -131,6 +178,42 @@ export default function Finance() {
     }
   };
 
+  const handleSubmitOrder = async (values: any) => {
+    setOrderLoading(true);
+    try {
+      if (orderType === 'buy') {
+        await exchangeApi.createBuyOrder({ symbol: activeSymbol, price: values.price, amount: values.amount });
+        message.success('买单已提交！');
+      } else {
+        await exchangeApi.createSellOrder({ symbol: activeSymbol, price: values.price, amount: values.amount });
+        message.success('卖单已提交！');
+      }
+      setOrderModal(false);
+      loadExchangeData();
+      const data = await authApi.getMyCompany();
+      useAppStore.getState().setCompany(data.company);
+    } catch (e: any) {
+      message.error(e.response?.data?.error || '操作失败');
+    } finally {
+      setOrderLoading(false);
+    }
+  };
+
+  const handleCancelOrder = async (id: string) => {
+    try {
+      await exchangeApi.cancelOrder(id);
+      message.success('订单已撤销');
+      loadExchangeData();
+      const data = await authApi.getMyCompany();
+      useAppStore.getState().setCompany(data.company);
+    } catch (e: any) {
+      message.error(e.response?.data?.error || '撤销失败');
+    }
+  };
+
+  const currentMarket = markets.find(m => m.symbol === activeSymbol);
+  const symbolInfo = getSymbolInfo(activeSymbol);
+
   const bondColumns = [
     { title: '面值', dataIndex: 'face_value', key: 'fv', render: (v: number) => <span style={{ color: '#faad14' }}>💰 {v.toLocaleString()}</span> },
     { title: '利率', dataIndex: 'interest_rate', key: 'rate', render: (v: number) => <Tag color="green">{(v * 100).toFixed(2)}%</Tag> },
@@ -159,6 +242,253 @@ export default function Finance() {
         const map: Record<string, any> = { active: 'blue', paid: 'green', defaulted: 'red' };
         return <Tag color={map[s]}>{s === 'active' ? '进行中' : s === 'paid' ? '已还清' : '违约'}</Tag>;
       },
+    },
+  ];
+
+  const orderColumns = [
+    {
+      title: '类型',
+      dataIndex: 'type',
+      key: 'type',
+      render: (t: string) => <Tag color={t === 'buy' ? 'green' : 'red'}>{t === 'buy' ? '买入' : '卖出'}</Tag>,
+    },
+    { title: '价格', dataIndex: 'price', key: 'price', render: (v: number) => `💰 ${v.toFixed(2)}` },
+    { title: '数量', dataIndex: 'total_amount', key: 'total', render: (v: number) => v.toFixed(2) },
+    {
+      title: '成交',
+      key: 'filled',
+      render: (_: any, r: ExchangeOrder) => (
+        <div>
+          <Progress
+            percent={Math.round((r.filled_amount / r.total_amount) * 100)}
+            size="small"
+            strokeColor="#13c2c2"
+            showInfo={false}
+            style={{ width: 80 }}
+          />
+          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>{r.filled_amount.toFixed(2)}</span>
+        </div>
+      ),
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      key: 'status',
+      render: (s: string) => {
+        const map: Record<string, any> = {
+          pending: { c: 'blue', t: '挂单中' },
+          partial: { c: 'orange', t: '部分成交' },
+          filled: { c: 'green', t: '已成交' },
+          cancelled: { c: 'default', t: '已撤销' },
+        };
+        return <Tag color={map[s]?.c}>{map[s]?.t}</Tag>;
+      },
+    },
+    { title: '时间', dataIndex: 'created_at', key: 'time', render: (t: number) => dayjs(t).format('MM-DD HH:mm') },
+    {
+      title: '操作',
+      key: 'ops',
+      render: (_: any, r: ExchangeOrder) => (
+        r.status === 'pending' || r.status === 'partial' ? (
+          <Button size="small" danger onClick={() => handleCancelOrder(r.id)}>撤销</Button>
+        ) : null
+      ),
+    },
+  ];
+
+  const tradeColumns = [
+    {
+      title: '方向',
+      key: 'side',
+      render: (_: any, r: ExchangeTrade) => {
+        const isBuy = r.buyer_company_id === company?.id;
+        return <Tag color={isBuy ? 'green' : 'red'}>{isBuy ? '买入' : '卖出'}</Tag>;
+      },
+    },
+    { title: '价格', dataIndex: 'price', key: 'price', render: (v: number) => `💰 ${v.toFixed(2)}` },
+    { title: '数量', dataIndex: 'amount', key: 'amount', render: (v: number) => v.toFixed(2) },
+    {
+      title: '成交额',
+      key: 'total',
+      render: (_: any, r: ExchangeTrade) => `💰 ${(r.price * r.amount).toFixed(2)}`,
+    },
+    { title: '时间', dataIndex: 'timestamp', key: 'time', render: (t: number) => dayjs(t).format('MM-DD HH:mm:ss') },
+  ];
+
+  const exchangeTabItems = [
+    {
+      key: 'market',
+      label: '交易市场',
+      children: (
+        <Row gutter={[16, 16]}>
+          <Col xs={24} md={6}>
+            <Card className="stat-card" title={<span style={{ color: '#fff' }}>交易品种</span>} style={{ marginBottom: 16 }}>
+              <List
+                dataSource={markets}
+                renderItem={(item: MarketData) => {
+                  const info = getSymbolInfo(item.symbol);
+                  const isActive = item.symbol === activeSymbol;
+                  return (
+                    <List.Item
+                      style={{
+                        cursor: 'pointer',
+                        padding: '12px 8px',
+                        borderRadius: 8,
+                        background: isActive ? 'rgba(114, 46, 209, 0.2)' : 'transparent',
+                        border: isActive ? '1px solid #722ed1' : '1px solid transparent',
+                      }}
+                      onClick={() => setActiveSymbol(item.symbol)}
+                    >
+                      <Space>
+                        <span style={{ fontSize: 24 }}>{info.icon}</span>
+                        <div>
+                          <div style={{ color: '#fff', fontWeight: 'bold' }}>{info.name}</div>
+                          <div style={{ color: '#faad14', fontSize: 14 }}>💰 {item.lastPrice?.toFixed(2)}</div>
+                        </div>
+                      </Space>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{
+                          color: (item.volume || 0) >= 0 ? '#52c41a' : '#f5222d',
+                          fontSize: 12,
+                        }}>
+                          24H量: {(item.volume || 0).toFixed(0)}
+                        </div>
+                      </div>
+                    </List.Item>
+                  );
+                }}
+              />
+            </Card>
+          </Col>
+
+          <Col xs={24} md={10}>
+            <Card
+              className="stat-card"
+              title={
+                <Space>
+                  <span style={{ fontSize: 28 }}>{symbolInfo.icon}</span>
+                  <span style={{ color: '#fff' }}>{symbolInfo.name} 行情</span>
+                </Space>
+              }
+              extra={
+                <Button type="primary" icon={<ShoppingCartOutlined />} onClick={() => setOrderModal(true)}>
+                  下单交易
+                </Button>
+              }
+              style={{ marginBottom: 16 }}
+            >
+              <Row gutter={[16, 16]}>
+                <Col xs={12}>
+                  <Statistic
+                    title={<span style={{ color: 'rgba(255,255,255,0.7)' }}>最新价</span>}
+                    value={currentMarket?.lastPrice || 0}
+                    precision={2}
+                    valueStyle={{ color: '#faad14' }}
+                  />
+                </Col>
+                <Col xs={12}>
+                  <Statistic
+                    title={<span style={{ color: 'rgba(255,255,255,0.7)' }}>24H成交量</span>}
+                    value={currentMarket?.volume || 0}
+                    valueStyle={{ color: '#13c2c2' }}
+                  />
+                </Col>
+                <Col xs={12}>
+                  <Statistic
+                    title={<span style={{ color: 'rgba(255,255,255,0.7)' }}>买一价</span>}
+                    value={currentMarket?.bidPrice || 0}
+                    precision={2}
+                    valueStyle={{ color: '#52c41a' }}
+                  />
+                </Col>
+                <Col xs={12}>
+                  <Statistic
+                    title={<span style={{ color: 'rgba(255,255,255,0.7)' }}>卖一价</span>}
+                    value={currentMarket?.askPrice || 0}
+                    precision={2}
+                    valueStyle={{ color: '#f5222d' }}
+                  />
+                </Col>
+              </Row>
+            </Card>
+
+            <Card className="stat-card" title={<span style={{ color: '#fff' }}>📊 我的持仓</span>}>
+              <Row gutter={[16, 16]}>
+                {SYMBOLS.map(sym => (
+                  <Col xs={12} key={sym.symbol}>
+                    <div style={{ padding: 12, background: 'rgba(255,255,255,0.05)', borderRadius: 8 }}>
+                      <Space>
+                        <span style={{ fontSize: 20 }}>{sym.icon}</span>
+                        <div>
+                          <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>{sym.name}</div>
+                          <div style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>
+                            {(assets[sym.symbol] || 0).toFixed(2)}
+                          </div>
+                        </div>
+                      </Space>
+                    </div>
+                  </Col>
+                ))}
+              </Row>
+            </Card>
+          </Col>
+
+          <Col xs={24} md={8}>
+            <Card className="stat-card" title={<span style={{ color: '#fff' }}>📖 订单簿</span>}>
+              <Tabs size="small" items={[
+                {
+                  key: 'sell',
+                  label: '卖单',
+                  children: (
+                    <List size="small">
+                      {orders.filter(o => o.type === 'sell' && (o.status === 'pending' || o.status === 'partial')).slice(0, 8).map(o => (
+                        <List.Item key={o.id} style={{ padding: '4px 0' }}>
+                          <span style={{ color: '#f5222d' }}>💰 {o.price.toFixed(2)}</span>
+                          <span style={{ color: 'rgba(255,255,255,0.6)' }}>{o.total_amount.toFixed(2)}</span>
+                        </List.Item>
+                      ))}
+                      {orders.filter(o => o.type === 'sell' && (o.status === 'pending' || o.status === 'partial')).length === 0 && (
+                        <div style={{ textAlign: 'center', padding: 20, color: 'rgba(255,255,255,0.4)' }}>暂无卖单</div>
+                      )}
+                    </List>
+                  ),
+                },
+                {
+                  key: 'buy',
+                  label: '买单',
+                  children: (
+                    <List size="small">
+                      {orders.filter(o => o.type === 'buy' && (o.status === 'pending' || o.status === 'partial')).slice(0, 8).map(o => (
+                        <List.Item key={o.id} style={{ padding: '4px 0' }}>
+                          <span style={{ color: '#52c41a' }}>💰 {o.price.toFixed(2)}</span>
+                          <span style={{ color: 'rgba(255,255,255,0.6)' }}>{o.total_amount.toFixed(2)}</span>
+                        </List.Item>
+                      ))}
+                      {orders.filter(o => o.type === 'buy' && (o.status === 'pending' || o.status === 'partial')).length === 0 && (
+                        <div style={{ textAlign: 'center', padding: 20, color: 'rgba(255,255,255,0.4)' }}>暂无买单</div>
+                      )}
+                    </List>
+                  ),
+                },
+              ]} />
+            </Card>
+          </Col>
+        </Row>
+      ),
+    },
+    {
+      key: 'orders',
+      label: '我的订单',
+      children: (
+        <Table dataSource={orders} columns={orderColumns} rowKey="id" size="small" pagination={{ pageSize: 10 }} />
+      ),
+    },
+    {
+      key: 'trades',
+      label: '成交记录',
+      children: (
+        <Table dataSource={trades} columns={tradeColumns} rowKey="id" size="small" pagination={{ pageSize: 10 }} />
+      ),
     },
   ];
 
@@ -252,13 +582,20 @@ export default function Finance() {
         <Col xs={24} md={14}>
           <Card
             className="stat-card"
-            title={<span style={{ color: '#fff' }}><DollarOutlined /> 金融业务</span>}
+            title={<span style={{ color: '#fff' }}><SwapOutlined /> 金融业务</span>}
           >
             <Tabs
+              activeKey={activeTab}
+              onChange={setActiveTab}
               items={[
                 {
+                  key: 'exchange',
+                  label: '🏛️ 跨服交易所',
+                  children: <Tabs type="card" size="small" items={exchangeTabItems} />,
+                },
+                {
                   key: 'bonds',
-                  label: `债券 (${bonds.length})`,
+                  label: `📜 债券 (${bonds.length})`,
                   children: (
                     <div>
                       <div style={{ marginBottom: 12 }}>
@@ -270,7 +607,7 @@ export default function Finance() {
                 },
                 {
                   key: 'loans',
-                  label: `贷款 (${loans.length})`,
+                  label: `💸 贷款 (${loans.length})`,
                   children: (
                     <div>
                       <div style={{ marginBottom: 12 }}>
@@ -341,6 +678,49 @@ export default function Finance() {
           </Form.Item>
           <Form.Item>
             <Button type="primary" htmlType="submit" loading={loading} block>发放</Button>
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal title={`${symbolInfo.icon} ${symbolInfo.name} - ${orderType === 'buy' ? '买入' : '卖出'}`} open={orderModal} onCancel={() => setOrderModal(false)} footer={null}>
+        <Tabs activeKey={orderType} onChange={k => setOrderType(k as 'buy' | 'sell')} items={[
+          { key: 'buy', label: '买入' },
+          { key: 'sell', label: '卖出' },
+        ]} />
+        <Form onFinish={handleSubmitOrder} layout="vertical">
+          <Form.Item label="交易品种">
+            <Select value={activeSymbol} onChange={setActiveSymbol} style={{ width: '100%' }}>
+              {SYMBOLS.map(sym => (
+                <Option key={sym.symbol} value={sym.symbol}>{sym.icon} {sym.name}</Option>
+              ))}
+            </Select>
+          </Form.Item>
+          <Form.Item name="price" label="价格（金币）" rules={[{ required: true }]} initialValue={currentMarket?.lastPrice || symbolInfo.basePrice}>
+            <InputNumber min={0.01} step={1} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="amount" label="数量" rules={[{ required: true }]} initialValue={1}>
+            <InputNumber min={0.01} step={1} style={{ width: '100%' }} />
+          </Form.Item>
+          <div style={{ padding: 12, background: 'rgba(255,255,255,0.05)', borderRadius: 8, marginBottom: 16 }}>
+            <Row>
+              <Col span={12}><span style={{ color: 'rgba(255,255,255,0.6)' }}>预计总额:</span></Col>
+              <Col span={12} style={{ textAlign: 'right', color: '#faad14', fontWeight: 'bold' }}>💰 --</Col>
+            </Row>
+            <Row>
+              <Col span={12}><span style={{ color: 'rgba(255,255,255,0.6)' }}>可用余额:</span></Col>
+              <Col span={12} style={{ textAlign: 'right', color: '#fff' }}>💰 {company?.total_assets?.toLocaleString() || 0}</Col>
+            </Row>
+            {orderType === 'sell' && (
+              <Row>
+                <Col span={12}><span style={{ color: 'rgba(255,255,255,0.6)' }}>持仓数量:</span></Col>
+                <Col span={12} style={{ textAlign: 'right', color: '#13c2c2' }}>{(assets[activeSymbol] || 0).toFixed(2)}</Col>
+              </Row>
+            )}
+          </div>
+          <Form.Item>
+            <Button type="primary" htmlType="submit" loading={orderLoading} block danger={orderType === 'sell'}>
+              {orderType === 'buy' ? '确认买入' : '确认卖出'}
+            </Button>
           </Form.Item>
         </Form>
       </Modal>

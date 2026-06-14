@@ -174,7 +174,7 @@ export interface CommercialTower {
   level: number;
   total_contribution: number;
   required_contribution: number;
-  upgrade_status: 'idle' | 'awaiting_approval' | 'upgrading';
+  upgrade_status: 'idle' | 'ready' | 'awaiting_approval' | 'upgrading';
   created_at: number;
 }
 

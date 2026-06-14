@@ -38,11 +38,11 @@ export default function Towers() {
 
   const handleUpgrade = async (id: string) => {
     try {
-      await towerApi.upgrade(id);
-      message.success('商业塔升级成功！');
+      await towerApi.requestUpgrade(id);
+      message.success('升级申请已提交，请等待三级审批');
       loadData();
     } catch (e: any) {
-      message.error(e.response?.data?.error || '升级失败');
+      message.error(e.response?.data?.error || '申请失败');
     }
   };
 
@@ -97,6 +97,7 @@ export default function Towers() {
       render: (s: string) => {
         const map: Record<string, any> = {
           idle: { c: 'default', t: '建设中' },
+          ready: { c: 'green', t: '可申请升级' },
           awaiting_approval: { c: 'orange', t: '待审批' },
           upgrading: { c: 'processing', t: '升级中' },
         };
@@ -112,8 +113,11 @@ export default function Towers() {
           <Button size="small" type="primary" icon={<PlusOutlined />} onClick={() => { setSelectedTower(r); setContribModal(true); }}>
             贡献
           </Button>
-          {r.total_contribution >= r.required_contribution && (
-            <Button size="small" type="primary" icon={<RiseOutlined />} onClick={() => handleUpgrade(r.id)}>升级</Button>
+          {r.upgrade_status === 'ready' && (
+            <Button size="small" type="primary" icon={<RiseOutlined />} onClick={() => handleUpgrade(r.id)}>申请升级</Button>
+          )}
+          {r.upgrade_status === 'awaiting_approval' && (
+            <Tag color="orange">审批中</Tag>
           )}
         </Space>
       ),
