@@ -123,8 +123,10 @@ export class ExchangeService {
 
   createBuyOrder(companyId: string, symbol: string, price: number, amount: number): any {
     const totalCost = price * amount;
+    const fee = totalCost * 0.01;
+    const totalNeeded = totalCost + fee;
     const company = queryOne('SELECT * FROM companies WHERE id = ?', [companyId]) as any;
-    if (!company || company.total_assets < totalCost) {
+    if (!company || company.total_assets < totalNeeded) {
       return null;
     }
 
@@ -243,7 +245,7 @@ export class ExchangeService {
 
   cancelOrder(orderId: string, companyId: string): boolean {
     const order = queryOne('SELECT * FROM exchange_orders WHERE id = ? AND company_id = ?', [orderId, companyId]) as any;
-    if (!order || order.status !== 'pending') return false;
+    if (!order || (order.status !== 'pending' && order.status !== 'partial')) return false;
 
     const remaining = order.total_amount - order.filled_amount;
 

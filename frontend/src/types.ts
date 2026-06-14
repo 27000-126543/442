@@ -215,6 +215,7 @@ export interface ExchangeTrade {
   sell_order_id: string;
   buyer_company_id: string;
   seller_company_id: string;
+  fee: number;
   timestamp: number;
 }
 

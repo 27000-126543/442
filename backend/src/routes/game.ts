@@ -103,7 +103,7 @@ router.post('/exchange/orders/buy', (req: Request, res: Response) => {
   const { symbol, price, amount } = req.body;
   if (!symbol || !price || !amount) return res.status(400).json({ error: '参数缺失' });
   const order = exchangeService.createBuyOrder(req.user!.company_id!, symbol, price, amount);
-  if (!order) return res.status(400).json({ error: '金币不足或创建失败' });
+  if (!order) return res.status(400).json({ error: '金币不足（需包含1%手续费）或创建失败' });
   res.json(order);
 });
 
@@ -117,7 +117,8 @@ router.post('/exchange/orders/sell', (req: Request, res: Response) => {
 
 router.post('/exchange/orders/:id/cancel', (req: Request, res: Response) => {
   const success = exchangeService.cancelOrder(req.params.id, req.user!.company_id!);
-  res.json({ success });
+  if (!success) return res.status(400).json({ error: '订单不存在或已完成，无法撤销' });
+  res.json({ success: true });
 });
 
 router.get('/exchange/trades', (req: Request, res: Response) => {

@@ -315,6 +315,26 @@ export default function Finance() {
       key: 'total',
       render: (_: any, r: ExchangeTrade) => `💰 ${(r.price * r.amount).toFixed(2)}`,
     },
+    {
+      title: '手续费',
+      key: 'fee',
+      dataIndex: 'fee',
+      render: (v: number) => <span style={{ color: '#faad14' }}>💰 {(v || 0).toFixed(2)}</span>,
+    },
+    {
+      title: '我的款项',
+      key: 'myCash',
+      render: (_: any, r: ExchangeTrade) => {
+        const isBuy = r.buyer_company_id === company?.id;
+        const tradeValue = r.price * r.amount;
+        const fee = r.fee || 0;
+        if (isBuy) {
+          return <span style={{ color: '#f5222d' }}>-💰 {(tradeValue + fee).toFixed(2)}</span>;
+        } else {
+          return <span style={{ color: '#52c41a' }}>+💰 {(tradeValue - fee).toFixed(2)}</span>;
+        }
+      },
+    },
     { title: '时间', dataIndex: 'timestamp', key: 'time', render: (t: number) => dayjs(t).format('MM-DD HH:mm:ss') },
   ];
 
