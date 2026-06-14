@@ -3,7 +3,8 @@ import type {
   User, Company, Department, Portal, Caravan, BankAccount, Bond, Loan,
   Spy, Artwork, Festival, ApprovalFlow, GameEvent, CommercialTower,
   EconomicIndicator, LeaderboardEntry, IncomeRecord,
-  ExchangeOrder, ExchangeTrade, MarketData, OrderBook
+  ExchangeOrder, ExchangeTrade, MarketData, OrderBook,
+  FundFlow, OrderDetail, TradeDetail
 } from '../types';
 
 export const authApi = {
@@ -60,13 +61,18 @@ export const exchangeApi = {
   getMarkets: () => api.get<MarketData[]>('/game/exchange/markets').then(r => r.data),
   getAssets: () => api.get<Record<string, number>>('/game/exchange/assets').then(r => r.data),
   getOrderBook: (symbol: string) => api.get<OrderBook>('/game/exchange/orderbook', { params: { symbol } }).then(r => r.data),
-  getOrders: (symbol?: string) => api.get<ExchangeOrder[]>('/game/exchange/orders', { params: { symbol } }).then(r => r.data),
+  getOrders: (symbol?: string, status?: string) =>
+    api.get<ExchangeOrder[]>('/game/exchange/orders', { params: { symbol, status } }).then(r => r.data),
+  getOrderDetail: (id: string) => api.get<OrderDetail>(`/game/exchange/orders/${id}`).then(r => r.data),
   createBuyOrder: (data: { symbol: string; price: number; amount: number }) =>
     api.post<ExchangeOrder>('/game/exchange/orders/buy', data).then(r => r.data),
   createSellOrder: (data: { symbol: string; price: number; amount: number }) =>
     api.post<ExchangeOrder>('/game/exchange/orders/sell', data).then(r => r.data),
   cancelOrder: (id: string) => api.post(`/game/exchange/orders/${id}/cancel`).then(r => r.data),
   getTrades: (symbol?: string) => api.get<ExchangeTrade[]>('/game/exchange/trades', { params: { symbol } }).then(r => r.data),
+  getTradeDetail: (id: string) => api.get<TradeDetail>(`/game/exchange/trades/${id}`).then(r => r.data),
+  getFlows: (symbol?: string, type?: string) =>
+    api.get<FundFlow[]>('/game/exchange/flows', { params: { symbol, type } }).then(r => r.data),
 };
 
 export const intelligenceApi = {

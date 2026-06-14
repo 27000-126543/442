@@ -203,6 +203,10 @@ export interface ExchangeOrder {
   total_amount: number;
   filled_amount: number;
   status: 'pending' | 'partial' | 'filled' | 'cancelled';
+  frozen_principal?: number;
+  frozen_fee?: number;
+  remaining_principal?: number;
+  remaining_fee?: number;
   created_at: number;
 }
 
@@ -217,6 +221,42 @@ export interface ExchangeTrade {
   seller_company_id: string;
   fee: number;
   timestamp: number;
+}
+
+export type FundFlowType =
+  | 'buy_freeze'
+  | 'buy_refund_price_diff'
+  | 'buy_match_principal'
+  | 'buy_match_fee'
+  | 'buy_cancel_refund'
+  | 'sell_freeze_asset'
+  | 'sell_match_receive'
+  | 'sell_match_fee'
+  | 'sell_cancel_unfreeze';
+
+export interface FundFlow {
+  id: string;
+  company_id: string;
+  type: FundFlowType;
+  direction: 'in' | 'out';
+  amount: number;
+  balance_after: number;
+  order_id?: string;
+  trade_id?: string;
+  symbol?: string;
+  description?: string;
+  created_at: number;
+}
+
+export interface OrderDetail {
+  order: ExchangeOrder;
+  trades: ExchangeTrade[];
+  flows: FundFlow[];
+}
+
+export interface TradeDetail {
+  trade: ExchangeTrade;
+  flows: FundFlow[];
 }
 
 export interface MarketData {

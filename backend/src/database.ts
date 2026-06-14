@@ -248,6 +248,10 @@ function createTables() {
       total_amount REAL NOT NULL,
       filled_amount REAL NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'pending',
+      frozen_principal REAL NOT NULL DEFAULT 0,
+      frozen_fee REAL NOT NULL DEFAULT 0,
+      remaining_principal REAL NOT NULL DEFAULT 0,
+      remaining_fee REAL NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL
     );
 
@@ -271,12 +275,38 @@ function createTables() {
       balance REAL NOT NULL DEFAULT 0,
       UNIQUE(company_id, symbol)
     );
+
+    CREATE TABLE IF NOT EXISTS fund_flows (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      direction TEXT NOT NULL,
+      amount REAL NOT NULL,
+      balance_after REAL NOT NULL,
+      order_id TEXT,
+      trade_id TEXT,
+      symbol TEXT,
+      description TEXT,
+      created_at INTEGER NOT NULL
+    );
   `;
 
   db.run(statements);
 
   try {
     db.run("ALTER TABLE exchange_trades ADD COLUMN fee REAL NOT NULL DEFAULT 0");
+  } catch (e) {}
+  try {
+    db.run("ALTER TABLE exchange_orders ADD COLUMN frozen_principal REAL NOT NULL DEFAULT 0");
+  } catch (e) {}
+  try {
+    db.run("ALTER TABLE exchange_orders ADD COLUMN frozen_fee REAL NOT NULL DEFAULT 0");
+  } catch (e) {}
+  try {
+    db.run("ALTER TABLE exchange_orders ADD COLUMN remaining_principal REAL NOT NULL DEFAULT 0");
+  } catch (e) {}
+  try {
+    db.run("ALTER TABLE exchange_orders ADD COLUMN remaining_fee REAL NOT NULL DEFAULT 0");
   } catch (e) {}
 
   saveDatabase();

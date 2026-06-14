@@ -96,7 +96,14 @@ router.get('/exchange/orderbook', (req: Request, res: Response) => {
 
 router.get('/exchange/orders', (req: Request, res: Response) => {
   const symbol = req.query.symbol as string | undefined;
-  res.json(exchangeService.getCompanyOrders(req.user!.company_id!, symbol));
+  const status = req.query.status as string | undefined;
+  res.json(exchangeService.getCompanyOrders(req.user!.company_id!, symbol, status));
+});
+
+router.get('/exchange/orders/:id', (req: Request, res: Response) => {
+  const detail = exchangeService.getOrderDetail(req.params.id, req.user!.company_id!);
+  if (!detail) return res.status(404).json({ error: '订单不存在' });
+  res.json(detail);
 });
 
 router.post('/exchange/orders/buy', (req: Request, res: Response) => {
@@ -124,6 +131,18 @@ router.post('/exchange/orders/:id/cancel', (req: Request, res: Response) => {
 router.get('/exchange/trades', (req: Request, res: Response) => {
   const symbol = req.query.symbol as string | undefined;
   res.json(exchangeService.getCompanyTrades(req.user!.company_id!, symbol));
+});
+
+router.get('/exchange/trades/:id', (req: Request, res: Response) => {
+  const detail = exchangeService.getTradeDetail(req.params.id, req.user!.company_id!);
+  if (!detail) return res.status(404).json({ error: '成交记录不存在' });
+  res.json(detail);
+});
+
+router.get('/exchange/flows', (req: Request, res: Response) => {
+  const symbol = req.query.symbol as string | undefined;
+  const type = req.query.type as string | undefined;
+  res.json(exchangeService.getFundFlows(req.user!.company_id!, symbol, type));
 });
 
 // ===== 情报部 =====
