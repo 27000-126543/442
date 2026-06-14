@@ -51,7 +51,7 @@ export class ApprovalService {
     const roleLevel: Record<UserRole, number> = {
       president: 3,
       vice_president: 2,
-      finance_officer: 3,
+      finance_officer: 1,
       director: 1,
       member: 0,
     };
@@ -66,9 +66,9 @@ export class ApprovalService {
     let a2 = approval.approver_level_2;
     let a3 = approval.approver_level_3;
 
-    if (approverLevel >= 1 && !l1) { l1 = true; a1 = userId; }
-    if (approverLevel >= 2 && !l2) { l2 = true; a2 = userId; }
-    if (approverLevel >= 3 && !l3) { l3 = true; a3 = userId; }
+    if (approverLevel === 1 && !l1) { l1 = true; a1 = userId; }
+    if (approverLevel === 2 && !l2) { l2 = true; a2 = userId; }
+    if (approverLevel === 3 && !l3) { l3 = true; a3 = userId; }
 
     const neededL1 = approval.required_level >= 1;
     const neededL2 = approval.required_level >= 2;

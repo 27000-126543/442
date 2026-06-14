@@ -157,8 +157,20 @@ export class TowerService {
     return this.getTowerById(towerId) || null;
   }
 
-  upgradeTower(towerId: string): CommercialTower | null {
-    return this.executeUpgrade(towerId);
+  upgradeTower(towerId: string, companyId?: string): CommercialTower | null {
+    if (companyId) {
+      const tower = this.getTowerById(towerId);
+      if (!tower) return null;
+      const companyIds = JSON.parse(tower.company_ids) as string[];
+      if (!companyIds.includes(companyId)) return null;
+
+      const pendingApproval = queryOne(
+        "SELECT * FROM approval_flows WHERE status = 'pending' AND payload LIKE ?",
+        [`%tower_upgrade%${towerId}%`]
+      );
+      if (pendingApproval) return null;
+    }
+    return null;
   }
 }
 

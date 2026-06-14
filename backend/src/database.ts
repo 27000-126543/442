@@ -260,6 +260,7 @@ function createTables() {
       sell_order_id TEXT NOT NULL,
       buyer_company_id TEXT NOT NULL,
       seller_company_id TEXT NOT NULL,
+      fee REAL NOT NULL DEFAULT 0,
       timestamp INTEGER NOT NULL
     );
 
@@ -273,6 +274,11 @@ function createTables() {
   `;
 
   db.run(statements);
+
+  try {
+    db.run("ALTER TABLE exchange_trades ADD COLUMN fee REAL NOT NULL DEFAULT 0");
+  } catch (e) {}
+
   saveDatabase();
 }
 

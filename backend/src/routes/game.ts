@@ -208,6 +208,12 @@ router.get('/approvals', (req: Request, res: Response) => {
   res.json(approvalService.getCompanyApprovals(req.user!.company_id!, req.query.status as string));
 });
 
+router.get('/approvals/:id', (req: Request, res: Response) => {
+  const approval = approvalService.getApprovalById(req.params.id);
+  if (!approval) return res.status(404).json({ error: '审批不存在' });
+  res.json(approval);
+});
+
 router.post('/approvals', (req: Request, res: Response) => {
   const { title, description, requiredLevel, payload, departmentId } = req.body;
   res.json(approvalService.createApproval(req.user!.company_id!, title, description, requiredLevel, payload, departmentId));
@@ -275,8 +281,8 @@ router.get('/towers/:id/contributions', (req: Request, res: Response) => {
 });
 
 router.post('/towers/:id/upgrade', (req: Request, res: Response) => {
-  const result = towerService.upgradeTower(req.params.id);
-  if (!result) return res.status(400).json({ error: '升级失败' });
+  const result = towerService.upgradeTower(req.params.id, req.user!.company_id!);
+  if (!result) return res.status(400).json({ error: '升级失败：请走审批流程申请升级' });
   res.json(result);
 });
 
@@ -295,6 +301,30 @@ router.get('/reports/pdf', (req: Request, res: Response) => {
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="weekly-report-${Date.now()}.pdf"`);
   res.send(pdfBuffer);
+});
+
+// ===== 调试接口（测试用）=====
+router.post('/debug/grant-gold', (req: Request, res: Response) => {
+  const amount = parseFloat(req.body.amount) || 10000;
+  const { run } = require('../database');
+  run("UPDATE companies SET total_assets = total_assets + ? WHERE id = ?", [amount, req.user!.company_id!]);
+  res.json({ success: true, amount });
+});
+
+router.post('/debug/grant-asset', (req: Request, res: Response) => {
+  const { symbol, amount } = req.body;
+  if (!symbol || !amount) return res.status(400).json({ error: '参数缺失' });
+  exchangeService as any;
+  // 直接通过数据库加资产
+  const { run, query } = require('../database');
+  const exists = query('SELECT * FROM company_assets WHERE company_id = ? AND symbol = ?', [req.user!.company_id!, symbol]);
+  if (exists.length === 0) {
+    const { generateId } = require('../utils');
+    run('INSERT INTO company_assets (id, company_id, symbol, balance) VALUES (?, ?, ?, ?)', [generateId(), req.user!.company_id!, symbol, amount]);
+  } else {
+    run('UPDATE company_assets SET balance = balance + ? WHERE company_id = ? AND symbol = ?', [amount, req.user!.company_id!, symbol]);
+  }
+  res.json({ success: true, symbol, amount });
 });
 
 export default router;

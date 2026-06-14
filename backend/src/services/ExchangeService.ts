@@ -165,104 +165,78 @@ export class ExchangeService {
   private matchOrder(orderId: string, type: string, symbol: string, price: number, amount: number, companyId: string) {
     let remaining = amount;
     const timestamp = now();
+    const FEE_RATE = 0.01;
 
-    if (type === 'buy') {
-      const sellOrders = query(
-        "SELECT * FROM exchange_orders WHERE symbol = ? AND type = 'sell' AND status = 'pending' AND price <= ? ORDER BY price ASC, created_at ASC",
-        [symbol, price]
-      );
+    const isBuy = type === 'buy';
+    const counterType = isBuy ? 'sell' : 'buy';
+    const counterOrders = query(
+      `SELECT * FROM exchange_orders WHERE symbol = ? AND type = ? AND status = 'pending' 
+       AND ${isBuy ? 'price <= ?' : 'price >= ?'} 
+       ORDER BY ${isBuy ? 'price ASC' : 'price DESC'}, created_at ASC`,
+      [symbol, counterType, price]
+    );
 
-      for (const sellOrder of sellOrders) {
-        if (remaining <= 0.0001) break;
-        const sellRemaining = sellOrder.total_amount - sellOrder.filled_amount;
-        const tradeAmount = Math.min(remaining, sellRemaining);
-        const tradePrice = sellOrder.price;
-        const tradeValue = tradePrice * tradeAmount;
+    for (const counterOrder of counterOrders) {
+      if (remaining <= 0.0001) break;
+      const counterRemaining = counterOrder.total_amount - counterOrder.filled_amount;
+      const tradeAmount = Math.min(remaining, counterRemaining);
+      const tradePrice = counterOrder.price;
+      const tradeValue = tradePrice * tradeAmount;
+      const fee = tradeValue * FEE_RATE;
 
-        const tradeId = generateId();
-        run(`
-          INSERT INTO exchange_trades (id, symbol, price, amount, buy_order_id, sell_order_id, buyer_company_id, seller_company_id, timestamp)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `, [tradeId, symbol, tradePrice, tradeAmount, orderId, sellOrder.id, companyId, sellOrder.company_id, timestamp]);
+      const tradeId = generateId();
+      const buyerCompanyId = isBuy ? companyId : counterOrder.company_id;
+      const sellerCompanyId = isBuy ? counterOrder.company_id : companyId;
+      const buyerOrderId = isBuy ? orderId : counterOrder.id;
+      const sellerOrderId = isBuy ? counterOrder.id : orderId;
 
-        run('UPDATE exchange_orders SET filled_amount = filled_amount + ? WHERE id = ?',
-          [tradeAmount, orderId]);
-        run('UPDATE exchange_orders SET filled_amount = filled_amount + ? WHERE id = ?',
-          [tradeAmount, sellOrder.id]);
+      run(`
+        INSERT INTO exchange_trades 
+        (id, symbol, price, amount, buy_order_id, sell_order_id, buyer_company_id, seller_company_id, fee, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [tradeId, symbol, tradePrice, tradeAmount, buyerOrderId, sellerOrderId, buyerCompanyId, sellerCompanyId, fee, timestamp]);
 
-        const buyOrder = queryOne('SELECT * FROM exchange_orders WHERE id = ?', [orderId]) as any;
-        if (buyOrder && buyOrder.filled_amount >= buyOrder.total_amount - 0.0001) {
-          run("UPDATE exchange_orders SET status = 'filled' WHERE id = ?", [orderId]);
-        }
-        const sellUpdated = queryOne('SELECT * FROM exchange_orders WHERE id = ?', [sellOrder.id]) as any;
-        if (sellUpdated && sellUpdated.filled_amount >= sellUpdated.total_amount - 0.0001) {
-          run("UPDATE exchange_orders SET status = 'filled' WHERE id = ?", [sellOrder.id]);
-        }
+      run('UPDATE exchange_orders SET filled_amount = filled_amount + ? WHERE id = ?', [tradeAmount, orderId]);
+      run('UPDATE exchange_orders SET filled_amount = filled_amount + ? WHERE id = ?', [tradeAmount, counterOrder.id]);
 
+      const myOrder = queryOne('SELECT * FROM exchange_orders WHERE id = ?', [orderId]) as any;
+      if (myOrder && myOrder.filled_amount >= myOrder.total_amount - 0.0001) {
+        run("UPDATE exchange_orders SET status = 'filled' WHERE id = ?", [orderId]);
+      } else if (myOrder && myOrder.filled_amount > 0) {
+        run("UPDATE exchange_orders SET status = 'partial' WHERE id = ?", [orderId]);
+      }
+      const counterUpdated = queryOne('SELECT * FROM exchange_orders WHERE id = ?', [counterOrder.id]) as any;
+      if (counterUpdated && counterUpdated.filled_amount >= counterUpdated.total_amount - 0.0001) {
+        run("UPDATE exchange_orders SET status = 'filled' WHERE id = ?", [counterOrder.id]);
+      } else if (counterUpdated && counterUpdated.filled_amount > 0) {
+        run("UPDATE exchange_orders SET status = 'partial' WHERE id = ?", [counterOrder.id]);
+      }
+
+      if (isBuy) {
         const refund = (price - tradePrice) * tradeAmount;
         if (refund > 0) {
-          run('UPDATE companies SET total_assets = total_assets + ? WHERE id = ?', [refund, companyId]);
+          run("UPDATE companies SET total_assets = total_assets + ? WHERE id = ?", [refund, companyId]);
         }
-
-        this.updateAsset(sellOrder.company_id, symbol, 0);
-        run('UPDATE companies SET total_assets = total_assets + ? WHERE id = ?', [tradeValue, sellOrder.company_id]);
-
         this.updateAsset(companyId, symbol, tradeAmount);
-
-        const fee = tradeValue * 0.01;
-        run('UPDATE companies SET total_assets = total_assets - ? WHERE id = ?', [fee, companyId]);
-        this.recordIncome(sellOrder.company_id, tradeValue * 0.99);
-
-        remaining -= tradeAmount;
+        run("UPDATE companies SET total_assets = total_assets - ? WHERE id = ?", [fee, companyId]);
+        run("UPDATE companies SET total_assets = total_assets + ? WHERE id = ?", [tradeValue - fee, counterOrder.company_id]);
+        this.recordIncome(counterOrder.company_id, tradeValue - fee);
+      } else {
+        this.updateAsset(counterOrder.company_id, symbol, tradeAmount);
+        run("UPDATE companies SET total_assets = total_assets + ? WHERE id = ?", [tradeValue - fee, companyId]);
+        run("UPDATE companies SET total_assets = total_assets - ? WHERE id = ?", [fee, counterOrder.company_id]);
+        this.recordIncome(companyId, tradeValue - fee);
       }
 
-      if (remaining > 0.0001) {
-        const lockedValue = price * remaining;
-      } else {
-        const buyOrder = queryOne('SELECT * FROM exchange_orders WHERE id = ?', [orderId]) as any;
-        if (buyOrder && buyOrder.filled_amount < buyOrder.total_amount - 0.0001) {
+      remaining -= tradeAmount;
+    }
+
+    if (remaining > 0.0001) {
+      if (isBuy) {
+        const myOrder = queryOne('SELECT * FROM exchange_orders WHERE id = ?', [orderId]) as any;
+        if (myOrder && myOrder.filled_amount > 0 && myOrder.filled_amount < myOrder.total_amount - 0.0001) {
           run("UPDATE exchange_orders SET status = 'partial' WHERE id = ?", [orderId]);
         }
-      }
-    } else {
-      const buyOrders = query(
-        "SELECT * FROM exchange_orders WHERE symbol = ? AND type = 'buy' AND status = 'pending' AND price >= ? ORDER BY price DESC, created_at ASC",
-        [symbol, price]
-      );
-
-      for (const buyOrder of buyOrders) {
-        if (remaining <= 0.0001) break;
-        const buyRemaining = buyOrder.total_amount - buyOrder.filled_amount;
-        const tradeAmount = Math.min(remaining, buyRemaining);
-        const tradePrice = buyOrder.price;
-        const tradeValue = tradePrice * tradeAmount;
-
-        const tradeId = generateId();
-        run(`
-          INSERT INTO exchange_trades (id, symbol, price, amount, buy_order_id, sell_order_id, buyer_company_id, seller_company_id, timestamp)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `, [tradeId, symbol, tradePrice, tradeAmount, buyOrder.id, orderId, buyOrder.company_id, companyId, timestamp]);
-
-        run('UPDATE exchange_orders SET filled_amount = filled_amount + ? WHERE id = ?',
-          [tradeAmount, orderId]);
-        run('UPDATE exchange_orders SET filled_amount = filled_amount + ? WHERE id = ?',
-          [tradeAmount, buyOrder.id]);
-
-        const sellOrderUpdated = queryOne('SELECT * FROM exchange_orders WHERE id = ?', [orderId]) as any;
-        if (sellOrderUpdated && sellOrderUpdated.filled_amount >= sellOrderUpdated.total_amount - 0.0001) {
-          run("UPDATE exchange_orders SET status = 'filled' WHERE id = ?", [orderId]);
-        }
-        const buyUpdated = queryOne('SELECT * FROM exchange_orders WHERE id = ?', [buyOrder.id]) as any;
-        if (buyUpdated && buyUpdated.filled_amount >= buyUpdated.total_amount - 0.0001) {
-          run("UPDATE exchange_orders SET status = 'filled' WHERE id = ?", [buyOrder.id]);
-        }
-
-        this.updateAsset(buyOrder.company_id, symbol, tradeAmount);
-
-        const sellRevenue = price * tradeAmount;
-        const priceDiff = (tradePrice - price) * tradeAmount;
-
-        remaining -= tradeAmount;
       }
     }
   }

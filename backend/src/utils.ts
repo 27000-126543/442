@@ -44,11 +44,12 @@ export const canApprove = (role: UserRole, requiredLevel: number): boolean => {
   const roleLevel: Record<UserRole, number> = {
     president: 3,
     vice_president: 2,
-    finance_officer: 3,
+    finance_officer: 1,
     director: 1,
     member: 0,
   };
-  return roleLevel[role] >= requiredLevel;
+  const level = roleLevel[role];
+  return level > 0 && level <= requiredLevel;
 };
 
 export const formatNumber = (num: number): string => {

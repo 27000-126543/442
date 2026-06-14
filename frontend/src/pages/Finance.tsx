@@ -39,6 +39,7 @@ export default function Finance() {
   const [assets, setAssets] = useState<Record<string, number>>({});
   const [orders, setOrders] = useState<ExchangeOrder[]>([]);
   const [trades, setTrades] = useState<ExchangeTrade[]>([]);
+  const [orderBook, setOrderBook] = useState<{ buyOrders: ExchangeOrder[]; sellOrders: ExchangeOrder[] }>({ buyOrders: [], sellOrders: [] });
   const [activeSymbol, setActiveSymbol] = useState<string>('mana_core');
   const [orderType, setOrderType] = useState<'buy' | 'sell'>('buy');
 
@@ -86,16 +87,18 @@ export default function Finance() {
 
   const loadExchangeData = async () => {
     try {
-      const [m, a, o, t] = await Promise.all([
+      const [m, a, o, t, ob] = await Promise.all([
         exchangeApi.getMarkets(),
         exchangeApi.getAssets(),
         exchangeApi.getOrders(activeSymbol),
         exchangeApi.getTrades(activeSymbol),
+        exchangeApi.getOrderBook(activeSymbol),
       ]);
       setMarkets(m);
       setAssets(a);
       setOrders(o);
       setTrades(t);
+      setOrderBook(ob);
     } catch (e) {
       console.error(e);
     }
@@ -434,38 +437,38 @@ export default function Finance() {
           </Col>
 
           <Col xs={24} md={8}>
-            <Card className="stat-card" title={<span style={{ color: '#fff' }}>📖 订单簿</span>}>
+            <Card className="stat-card" title={<span style={{ color: '#fff' }}>📖 全服订单簿</span>}>
               <Tabs size="small" items={[
                 {
                   key: 'sell',
-                  label: '卖单',
+                  label: '卖盘',
                   children: (
                     <List size="small">
-                      {orders.filter(o => o.type === 'sell' && (o.status === 'pending' || o.status === 'partial')).slice(0, 8).map(o => (
+                      {orderBook.sellOrders.slice(0, 10).map((o: ExchangeOrder) => (
                         <List.Item key={o.id} style={{ padding: '4px 0' }}>
                           <span style={{ color: '#f5222d' }}>💰 {o.price.toFixed(2)}</span>
-                          <span style={{ color: 'rgba(255,255,255,0.6)' }}>{o.total_amount.toFixed(2)}</span>
+                          <span style={{ color: 'rgba(255,255,255,0.6)' }}>{(o.total_amount - o.filled_amount).toFixed(2)}</span>
                         </List.Item>
                       ))}
-                      {orders.filter(o => o.type === 'sell' && (o.status === 'pending' || o.status === 'partial')).length === 0 && (
-                        <div style={{ textAlign: 'center', padding: 20, color: 'rgba(255,255,255,0.4)' }}>暂无卖单</div>
+                      {orderBook.sellOrders.length === 0 && (
+                        <div style={{ textAlign: 'center', padding: 20, color: 'rgba(255,255,255,0.4)' }}>暂无卖盘</div>
                       )}
                     </List>
                   ),
                 },
                 {
                   key: 'buy',
-                  label: '买单',
+                  label: '买盘',
                   children: (
                     <List size="small">
-                      {orders.filter(o => o.type === 'buy' && (o.status === 'pending' || o.status === 'partial')).slice(0, 8).map(o => (
+                      {orderBook.buyOrders.slice(0, 10).map((o: ExchangeOrder) => (
                         <List.Item key={o.id} style={{ padding: '4px 0' }}>
                           <span style={{ color: '#52c41a' }}>💰 {o.price.toFixed(2)}</span>
-                          <span style={{ color: 'rgba(255,255,255,0.6)' }}>{o.total_amount.toFixed(2)}</span>
+                          <span style={{ color: 'rgba(255,255,255,0.6)' }}>{(o.total_amount - o.filled_amount).toFixed(2)}</span>
                         </List.Item>
                       ))}
-                      {orders.filter(o => o.type === 'buy' && (o.status === 'pending' || o.status === 'partial')).length === 0 && (
-                        <div style={{ textAlign: 'center', padding: 20, color: 'rgba(255,255,255,0.4)' }}>暂无买单</div>
+                      {orderBook.buyOrders.length === 0 && (
+                        <div style={{ textAlign: 'center', padding: 20, color: 'rgba(255,255,255,0.4)' }}>暂无买盘</div>
                       )}
                     </List>
                   ),
