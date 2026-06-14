@@ -52,7 +52,7 @@ export class ApprovalService {
       president: 3,
       vice_president: 2,
       finance_officer: 1,
-      director: 1,
+      director: 0,
       member: 0,
     };
     const approverLevel = roleLevel[role];

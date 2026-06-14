@@ -45,7 +45,7 @@ export const canApprove = (role: UserRole, requiredLevel: number): boolean => {
     president: 3,
     vice_president: 2,
     finance_officer: 1,
-    director: 1,
+    director: 0,
     member: 0,
   };
   const level = roleLevel[role];

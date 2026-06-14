@@ -303,28 +303,4 @@ router.get('/reports/pdf', (req: Request, res: Response) => {
   res.send(pdfBuffer);
 });
 
-// ===== 调试接口（测试用）=====
-router.post('/debug/grant-gold', (req: Request, res: Response) => {
-  const amount = parseFloat(req.body.amount) || 10000;
-  const { run } = require('../database');
-  run("UPDATE companies SET total_assets = total_assets + ? WHERE id = ?", [amount, req.user!.company_id!]);
-  res.json({ success: true, amount });
-});
-
-router.post('/debug/grant-asset', (req: Request, res: Response) => {
-  const { symbol, amount } = req.body;
-  if (!symbol || !amount) return res.status(400).json({ error: '参数缺失' });
-  exchangeService as any;
-  // 直接通过数据库加资产
-  const { run, query } = require('../database');
-  const exists = query('SELECT * FROM company_assets WHERE company_id = ? AND symbol = ?', [req.user!.company_id!, symbol]);
-  if (exists.length === 0) {
-    const { generateId } = require('../utils');
-    run('INSERT INTO company_assets (id, company_id, symbol, balance) VALUES (?, ?, ?, ?)', [generateId(), req.user!.company_id!, symbol, amount]);
-  } else {
-    run('UPDATE company_assets SET balance = balance + ? WHERE company_id = ? AND symbol = ?', [amount, req.user!.company_id!, symbol]);
-  }
-  res.json({ success: true, symbol, amount });
-});
-
 export default router;
